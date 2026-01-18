@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Herndon Scanner">
+    <meta name="theme-color" content="#f2f2f7">
+    <title>Herndon Room Scanner</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <style>
+        :root {
+            --system-blue: #007AFF;
+            --system-green: #34C759;
+            --system-orange: #FF9500;
+            --system-red: #FF3B30;
+            --system-gray: #8E8E93;
+            --system-gray2: #AEAEB2;
+            --system-gray3: #C7C7CC;
+            --system-gray4: #D1D1D6;
+            --system-gray5: #E5E5EA;
+            --system-gray6: #F2F2F7;
+            --label: #000000;
+            --label-secondary: #3C3C43;
+            --label-tertiary: #3C3C4399;
+            --background: #FFFFFF;
+            --background-secondary: #F2F2F7;
+            --separator: #3C3C4349;
+            --separator-opaque: #C6C6C8;
+            --tier1: #34C759;
+            --tier2: #FF9500;
+            --tier3: #FF3B30;
+            --safe-area-top: env(safe-area-inset-top, 0px);
+            --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+            --nav-height: 44px;
+            --tab-height: 49px;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --label: #FFFFFF;
+                --label-secondary: #EBEBF5;
+                --label-tertiary: #EBEBF599;
+                --background: #000000;
+                --background-secondary: #1C1C1E;
+                --background-tertiary: #2C2C2E;
+                --separator: #54545899;
+                --separator-opaque: #38383A;
+                --system-gray6: #1C1C1E;
+            }
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+            font-size: 17px; line-height: 1.47; color: var(--label);
+            background: var(--background-secondary);
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .app-container { display: flex; flex-direction: column; height: 100%; padding-top: var(--safe-area-top); padding-bottom: var(--safe-area-bottom); }
+        
+        .nav-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            height: var(--nav-height); padding: 0 16px;
+            background: var(--background); border-bottom: 0.5px solid var(--separator-opaque);
+        }
+        .nav-title { font-size: 17px; font-weight: 600; }
+        .nav-button { font-size: 17px; color: var(--system-blue); background: none; border: none; padding: 8px 0; cursor: pointer; min-width: 60px; }
+        .nav-button:active { opacity: 0.5; }
+        
+        .content-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        
+        .tab-bar {
+            display: flex; height: var(--tab-height); background: var(--background);
+            border-top: 0.5px solid var(--separator-opaque);
+        }
+        .tab-item {
+            flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 2px; background: none; border: none; color: var(--system-gray); cursor: pointer;
+        }
+        .tab-item.active { color: var(--system-blue); }
+        .tab-icon { width: 24px; height: 24px; }
+        .tab-label { font-size: 10px; font-weight: 500; }
+        
+        .view { display: none; height: 100%; overflow-y: auto; }
+        .view.active { display: block; }
+        
+        .rooms-header { padding: 16px; background: var(--background-secondary); }
+        .progress-summary { background: var(--background); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+        .progress-title { font-size: 13px; font-weight: 600; color: var(--label-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .progress-stats { display: flex; gap: 24px; }
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-value { font-size: 28px; font-weight: 700; line-height: 1.1; }
+        .stat-value.highlight { color: var(--system-blue); }
+        .stat-label { font-size: 13px; color: var(--label-tertiary); }
+        .progress-bar { height: 8px; background: var(--system-gray5); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+        .progress-bar-fill { height: 100%; background: var(--system-green); border-radius: 4px; transition: width 0.3s ease; }
+        
+        .filter-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+        .filter-pill {
+            flex-shrink: 0; padding: 8px 16px; font-size: 15px; font-weight: 500;
+            color: var(--system-blue); background: var(--background); border: none; border-radius: 20px; cursor: pointer;
+        }
+        .filter-pill.active { background: var(--system-blue); color: white; }
+        
+        .rooms-list { padding: 0 16px 16px; }
+        .section-header { font-size: 13px; font-weight: 600; color: var(--label-secondary); text-transform: uppercase; letter-spacing: 0.5px; padding: 16px 0 8px; }
+        
+        .room-card { background: var(--background); border-radius: 12px; margin-bottom: 8px; overflow: hidden; cursor: pointer; }
+        .room-card:active { transform: scale(0.98); }
+        .room-card-content { display: flex; align-items: center; padding: 12px 16px; gap: 12px; }
+        .room-status-indicator { width: 12px; height: 12px; border-radius: 50%; }
+        .room-status-indicator.not-started { background: var(--system-gray4); }
+        .room-status-indicator.in-progress { background: var(--system-orange); }
+        .room-status-indicator.complete { background: var(--system-green); }
+        .room-info { flex: 1; min-width: 0; }
+        .room-name { font-size: 17px; font-weight: 500; }
+        .room-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+        .tier-badge { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+        .tier-badge.tier-1 { background: rgba(52, 199, 89, 0.15); color: var(--tier1); }
+        .tier-badge.tier-2 { background: rgba(255, 149, 0, 0.15); color: var(--tier2); }
+        .tier-badge.tier-3 { background: rgba(255, 59, 48, 0.15); color: var(--tier3); }
+        .room-tasks { font-size: 13px; color: var(--label-tertiary); }
+        .room-progress-bar { height: 3px; background: var(--system-gray5); }
+        .room-progress-fill { height: 100%; background: var(--system-blue); }
+        
+        .detail-header { background: var(--background); padding: 16px; border-bottom: 0.5px solid var(--separator-opaque); }
+        .detail-room-name { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+        .detail-meta { display: flex; align-items: center; gap: 12px; }
+        .detail-sections { padding: 16px; }
+        .detail-section { background: var(--background); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+        .detail-section-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
+        .detail-section-title { font-size: 15px; font-weight: 600; }
+        .detail-section-status { font-size: 13px; color: var(--label-tertiary); }
+        .detail-section-status.complete { color: var(--system-green); }
+        
+        .action-buttons { display: flex; gap: 8px; padding: 0 16px 12px; }
+        .action-btn {
+            flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 10px 12px; font-size: 15px; font-weight: 500;
+            color: var(--system-blue); background: rgba(0, 122, 255, 0.1);
+            border: none; border-radius: 10px; cursor: pointer;
+        }
+        .action-btn:active { transform: scale(0.95); }
+        .action-btn svg { width: 18px; height: 18px; }
+        .action-btn.primary { background: var(--system-blue); color: white; }
+        
+        .checklist { list-style: none; }
+        .checklist-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 0.5px solid var(--separator); cursor: pointer; }
+        .checklist-item:first-child { border-top: none; }
+        .checkbox { width: 24px; height: 24px; border: 2px solid var(--system-gray3); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .checkbox.checked { background: var(--system-blue); border-color: var(--system-blue); }
+        .checkbox svg { width: 14px; height: 14px; color: white; opacity: 0; }
+        .checkbox.checked svg { opacity: 1; }
+        .checklist-text { flex: 1; font-size: 17px; }
+        .checklist-item.completed .checklist-text { color: var(--label-tertiary); text-decoration: line-through; }
+        
+        .sync-content { padding: 16px; }
+        .sync-card { background: var(--background); border-radius: 12px; padding: 20px; margin-bottom: 16px; text-align: center; }
+        .sync-icon { width: 64px; height: 64px; margin: 0 auto 16px; color: var(--system-blue); }
+        .sync-icon.syncing { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .sync-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+        .sync-subtitle { font-size: 15px; color: var(--label-tertiary); margin-bottom: 16px; }
+        .sync-btn {
+            display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px;
+            font-size: 17px; font-weight: 600; color: white; background: var(--system-blue);
+            border: none; border-radius: 12px; cursor: pointer;
+        }
+        
+        .auth-section { background: var(--background); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .auth-status { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .auth-indicator { width: 12px; height: 12px; border-radius: 50%; }
+        .auth-indicator.connected { background: var(--system-green); }
+        .auth-indicator.disconnected { background: var(--system-red); }
+        .auth-btn { width: 100%; padding: 12px; font-size: 17px; font-weight: 600; color: white; background: #0078D4; border: none; border-radius: 10px; cursor: pointer; }
+        
+        .settings-content { padding: 16px; }
+        .settings-group { background: var(--background); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+        .settings-group-title { font-size: 13px; color: var(--label-secondary); text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 16px; }
+        .setting-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 0.5px solid var(--separator); }
+        .setting-item:last-child { border-bottom: none; }
+        .setting-label { font-size: 17px; }
+        .setting-value { font-size: 17px; color: var(--label-tertiary); }
+        
+        .toast {
+            position: fixed; bottom: calc(var(--tab-height) + 16px); left: 50%; transform: translateX(-50%) translateY(100px);
+            background: #2d2d2d; color: white; padding: 12px 20px; border-radius: 12px;
+            font-size: 15px; font-weight: 500; opacity: 0; transition: all 0.3s ease; z-index: 2000;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <nav class="nav-bar">
+            <button class="nav-button" id="navLeft" style="visibility: hidden;">←</button>
+            <span class="nav-title" id="navTitle">Rooms</span>
+            <button class="nav-button" id="navRight">Sync</button>
+        </nav>
+        
+        <main class="content-area">
+            <div class="view active" id="viewRooms">
+                <div class="rooms-header">
+                    <div class="progress-summary">
+                        <div class="progress-title">Overall Progress</div>
+                        <div class="progress-stats">
+                            <div class="stat-item"><span class="stat-value highlight" id="completedCount">0</span><span class="stat-label">Complete</span></div>
+                            <div class="stat-item"><span class="stat-value" id="inProgressCount">0</span><span class="stat-label">In Progress</span></div>
+                            <div class="stat-item"><span class="stat-value" id="remainingCount">23</span><span class="stat-label">Remaining</span></div>
+                        </div>
+                        <div class="progress-bar"><div class="progress-bar-fill" id="overallProgress" style="width: 0%"></div></div>
+                    </div>
+                    <div class="filter-row">
+                        <button class="filter-pill active" data-filter="all">All</button>
+                        <button class="filter-pill" data-filter="interior">Interior</button>
+                        <button class="filter-pill" data-filter="exterior">Exterior</button>
+                        <button class="filter-pill" data-filter="tier-1">Tier 1</button>
+                        <button class="filter-pill" data-filter="tier-2">Tier 2</button>
+                        <button class="filter-pill" data-filter="tier-3">Tier 3</button>
+                    </div>
+                </div>
+                <div class="rooms-list" id="roomsList"></div>
+            </div>
+            
+            <div class="view" id="viewDetail">
+                <div class="detail-header">
+                    <h1 class="detail-room-name" id="detailRoomName">Kitchen</h1>
+                    <div class="detail-meta">
+                        <span class="tier-badge" id="detailTier">Tier 2</span>
+                        <span id="detailProgress">0 of 5 complete</span>
+                    </div>
+                </div>
+                <div class="detail-sections">
+                    <div class="detail-section">
+                        <div class="detail-section-header">
+                            <span class="detail-section-title">📷 Photos</span>
+                            <span class="detail-section-status" id="photosStatus">0 of 5</span>
+                        </div>
+                        <div class="action-buttons">
+                            <button class="action-btn" onclick="openCamera()">📷 Camera</button>
+                            <button class="action-btn primary" onclick="importPhotos()">⬆️ Import</button>
+                        </div>
+                        <ul class="checklist" id="photoChecklist"></ul>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-header">
+                            <span class="detail-section-title">📐 LiDAR Scan</span>
+                            <span class="detail-section-status" id="scanStatus">Not started</span>
+                        </div>
+                        <div class="action-buttons">
+                            <button class="action-btn primary" onclick="openTrace()">Open Trace</button>
+                            <button class="action-btn" onclick="verifyScan()">✓ Verify</button>
+                        </div>
+                    </div>
+                    <button class="action-btn primary" style="width: calc(100% - 32px); margin: 0 16px 16px; padding: 16px;" onclick="markRoomComplete()">✓ Mark Room Complete</button>
+                </div>
+            </div>
+            
+            <div class="view" id="viewSync">
+                <div class="sync-content">
+                    <div class="auth-section">
+                        <div class="auth-status">
+                            <div class="auth-indicator" id="authIndicator"></div>
+                            <span id="authText">Checking connection...</span>
+                        </div>
+                        <button class="auth-btn" onclick="handleAuth()">Connect to OneDrive</button>
+                    </div>
+                    <div class="sync-card">
+                        <svg class="sync-icon" id="syncIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                        </svg>
+                        <h2 class="sync-title">Ready to Sync</h2>
+                        <p class="sync-subtitle" id="syncSubtitle">Last sync: Never</p>
+                        <button class="sync-btn" onclick="runSync()">🔄 Sync Now</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="view" id="viewSettings">
+                <div class="settings-content">
+                    <p class="settings-group-title">Data</p>
+                    <div class="settings-group">
+                        <div class="setting-item" onclick="exportData()"><span class="setting-label">Export Progress</span><span>→</span></div>
+                        <div class="setting-item" onclick="importData()"><span class="setting-label">Import Progress</span><span>→</span></div>
+                        <div class="setting-item" onclick="resetData()"><span class="setting-label" style="color:var(--system-red)">Reset All</span><span>→</span></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <nav class="tab-bar">
+            <button class="tab-item active" data-view="viewRooms">
+                <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                <span class="tab-label">Rooms</span>
+            </button>
+            <button class="tab-item" data-view="viewSync">
+                <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span class="tab-label">Sync</span>
+            </button>
+            <button class="tab-item" data-view="viewSettings">
+                <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span class="tab-label">Settings</span>
+            </button>
+        </nav>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const ROOMS_DATA = [
+            { id: 'kitchen', name: 'Kitchen', category: 'interior', tier: 2, folder: 'Kitchen', photos: ['From dining room entry', 'Sink/window wall', 'Stove/range wall', 'Refrigerator wall', 'Ceiling detail'] },
+            { id: 'living-room', name: 'Living Room', category: 'interior', tier: 3, folder: 'Living Room', photos: ['From entry', 'Fireplace wall', 'Sliding door wall', 'Built-in unit', 'Ceiling'] },
+            { id: 'master-bedroom', name: 'Master Bedroom', category: 'interior', tier: 2, folder: 'master', photos: ['From doorway', 'Sliding door wall', 'Window wall', 'Closet area', 'Ceiling'] },
+            { id: 'master-bath', name: 'Master Bath', category: 'interior', tier: 2, folder: 'Master Bath', photos: ['From doorway', 'Vanity wall', 'Tub/shower', 'Toilet area', 'Ceiling'] },
+            { id: 'playroom', name: 'Playroom / Media', category: 'interior', tier: 1, folder: 'Play Room', photos: ['From entry', 'Sliding door wall', 'Window wall', 'Attic access'] },
+            { id: 'guest-bedroom', name: 'Guest Bedroom', category: 'interior', tier: 1, folder: 'guest bedroom', photos: ['From doorway', 'Window wall', 'Closet'] },
+            { id: 'guest-bath', name: 'Guest Bathroom', category: 'interior', tier: 1, folder: 'Guest bathroom', photos: ['Cabinet damage', 'Crown molding', 'Overall'] },
+            { id: 'pool-bath', name: 'Pool Bathroom', category: 'interior', tier: 3, folder: 'Pool-Kids Bath', photos: ['From doorway', 'Vanity wall', 'Tub/shower', 'Floor pattern', 'Ceiling'] },
+            { id: 'dining-room', name: 'Dining Room', category: 'interior', tier: 1, folder: 'Dining Room', photos: ['From living room', 'From kitchen', 'Window wall'] },
+            { id: 'front-entry', name: 'Front Entry', category: 'interior', tier: 2, folder: 'front entry', photos: ['From outside', 'Toward living room', 'Ceiling', 'Floor transitions'] },
+            { id: 'hallway', name: 'Hallway', category: 'interior', tier: 1, folder: 'Hallway', photos: ['Full length', 'Closet area', 'Air return', 'Ceiling'] },
+            { id: 'study', name: 'Study', category: 'interior', tier: 1, folder: 'Study', photos: ['From doorway', 'Window wall', 'Desk area'] },
+            { id: 'laundry', name: 'Laundry Room', category: 'interior', tier: 1, folder: 'laundry room', photos: ['From doorway', 'Cabinet area', 'Appliance area'] },
+            { id: 'daniels-room', name: "Daniel's Room", category: 'interior', tier: 1, folder: "Daniel's room", photos: ['From doorway', 'Window wall', 'Closet'] },
+            { id: 'jeffs-room', name: "Jeff's Room", category: 'interior', tier: 1, folder: "jeff's room", photos: ['From doorway', 'Window (BB hole)', 'Closet', 'Crown molding'] },
+            { id: 'jens-room', name: "Jen's Room", category: 'interior', tier: 1, folder: "Jen's room", photos: ['From doorway', 'Sliding door wall', 'Closet'] },
+            { id: 'garage', name: 'Garage', category: 'exterior', tier: 1, folder: 'Garage', photos: ['Front door area', 'Ceiling damage', 'Rear siding', 'Side door'] },
+            { id: 'lanai-pool', name: 'Lanai & Pool', category: 'exterior', tier: 2, folder: 'Pool - Pool cage & Lanai', photos: ['Pool from lanai', 'Outdoor kitchen', 'Paver condition', 'Pool surface', 'Lanai floor'] },
+            { id: 'exterior', name: 'Exterior / Siding', category: 'exterior', tier: 1, folder: 'Exterior Repairs', photos: ['Front elevation', 'Side elevations', 'Rear elevation', 'Details'] },
+            { id: 'doors-windows', name: 'Doors & Windows', category: 'exterior', tier: 2, folder: 'Doors & windows', photos: ['Sample window', 'Window count', 'Problem windows'] },
+            { id: 'mechanical', name: 'Mechanical', category: 'exterior', tier: 1, folder: 'mechanical', photos: ['A/C unit', 'Post lamp', 'Nutone panel', 'Water softener'] },
+            { id: 'yard', name: 'Yard & Landscaping', category: 'exterior', tier: 2, folder: 'Landscaping', photos: ['Front yard', 'Rear yard', 'Driveway', 'Hedge progress', 'Problem areas'] },
+            { id: 'roof', name: 'Roof', category: 'exterior', tier: 1, folder: 'Roof', photos: ['Overall from ground', 'Problem areas'] }
+        ];
+
+        let state = { currentView: 'viewRooms', currentRoom: null, filter: 'all', rooms: {}, lastSync: null };
+
+        function loadState() {
+            const saved = localStorage.getItem('herndon-scanner-state');
+            if (saved) state = { ...state, ...JSON.parse(saved) };
+            if (Object.keys(state.rooms).length === 0) {
+                ROOMS_DATA.forEach(room => {
+                    state.rooms[room.id] = { status: 'not-started', photosComplete: [], scanComplete: false, notes: '' };
+                });
+            }
+            saveState();
+        }
+
+        function saveState() { localStorage.setItem('herndon-scanner-state', JSON.stringify(state)); }
+
+        function switchView(viewId, roomId = null) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            const tab = document.querySelector(`[data-view="${viewId}"]`);
+            if (tab) tab.classList.add('active');
+            
+            const navLeft = document.getElementById('navLeft');
+            const navTitle = document.getElementById('navTitle');
+            
+            if (viewId === 'viewDetail' && roomId) {
+                state.currentRoom = roomId;
+                const room = ROOMS_DATA.find(r => r.id === roomId);
+                navLeft.style.visibility = 'visible';
+                navLeft.textContent = '←';
+                navLeft.onclick = () => switchView('viewRooms');
+                navTitle.textContent = room.name;
+                renderRoomDetail(roomId);
+            } else {
+                navLeft.style.visibility = 'hidden';
+                navTitle.textContent = viewId === 'viewRooms' ? 'Rooms' : viewId === 'viewSync' ? 'Sync' : 'Settings';
+            }
+            state.currentView = viewId;
+            saveState();
+        }
+
+        function renderRoomsList() {
+            const container = document.getElementById('roomsList');
+            let html = '';
+            const rooms = ROOMS_DATA.filter(r => {
+                if (state.filter === 'interior') return r.category === 'interior';
+                if (state.filter === 'exterior') return r.category === 'exterior';
+                if (state.filter.startsWith('tier-')) return r.tier === parseInt(state.filter.split('-')[1]);
+                return true;
+            });
+            
+            const interior = rooms.filter(r => r.category === 'interior');
+            const exterior = rooms.filter(r => r.category === 'exterior');
+            
+            if (interior.length) {
+                html += '<div class="section-header">Interior Rooms</div>';
+                interior.forEach(r => html += renderRoomCard(r));
+            }
+            if (exterior.length) {
+                html += '<div class="section-header">Exterior Areas</div>';
+                exterior.forEach(r => html += renderRoomCard(r));
+            }
+            container.innerHTML = html;
+            container.querySelectorAll('.room-card').forEach(card => {
+                card.onclick = () => switchView('viewDetail', card.dataset.roomId);
+            });
+            updateProgressStats();
+        }
+
+        function renderRoomCard(room) {
+            const rs = state.rooms[room.id] || { status: 'not-started', photosComplete: [] };
+            const progress = Math.round((rs.photosComplete.length + (rs.scanComplete ? 1 : 0)) / (room.photos.length + 1) * 100);
+            return `<div class="room-card" data-room-id="${room.id}">
+                <div class="room-card-content">
+                    <div class="room-status-indicator ${rs.status}"></div>
+                    <div class="room-info">
+                        <div class="room-name">${room.name}</div>
+                        <div class="room-meta">
+                            <span class="tier-badge tier-${room.tier}">Tier ${room.tier}</span>
+                            <span class="room-tasks">${rs.photosComplete.length + (rs.scanComplete ? 1 : 0)} of ${room.photos.length + 1}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="room-progress-bar"><div class="room-progress-fill" style="width: ${progress}%"></div></div>
+            </div>`;
+        }
+
+        function updateProgressStats() {
+            let complete = 0, inProgress = 0;
+            ROOMS_DATA.forEach(r => {
+                const rs = state.rooms[r.id];
+                if (rs?.status === 'complete') complete++;
+                else if (rs?.status === 'in-progress') inProgress++;
+            });
+            document.getElementById('completedCount').textContent = complete;
+            document.getElementById('inProgressCount').textContent = inProgress;
+            document.getElementById('remainingCount').textContent = ROOMS_DATA.length - complete;
+            document.getElementById('overallProgress').style.width = `${Math.round(complete / ROOMS_DATA.length * 100)}%`;
+        }
+
+        function renderRoomDetail(roomId) {
+            const room = ROOMS_DATA.find(r => r.id === roomId);
+            const rs = state.rooms[roomId] || { photosComplete: [], scanComplete: false };
+            
+            document.getElementById('detailRoomName').textContent = room.name;
+            document.getElementById('detailTier').textContent = `Tier ${room.tier}`;
+            document.getElementById('detailTier').className = `tier-badge tier-${room.tier}`;
+            document.getElementById('photosStatus').textContent = `${rs.photosComplete.length} of ${room.photos.length}`;
+            document.getElementById('scanStatus').textContent = rs.scanComplete ? '✓ Complete' : 'Not started';
+            
+            const checklist = document.getElementById('photoChecklist');
+            checklist.innerHTML = room.photos.map((photo, i) => {
+                const done = rs.photosComplete.includes(i);
+                return `<li class="checklist-item ${done ? 'completed' : ''}" data-idx="${i}">
+                    <div class="checkbox ${done ? 'checked' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    <span class="checklist-text">${photo}</span>
+                </li>`;
+            }).join('');
+            checklist.querySelectorAll('.checklist-item').forEach(item => {
+                item.onclick = () => togglePhoto(roomId, parseInt(item.dataset.idx));
+            });
+        }
+
+        function togglePhoto(roomId, idx) {
+            const rs = state.rooms[roomId];
+            const i = rs.photosComplete.indexOf(idx);
+            if (i === -1) rs.photosComplete.push(idx); else rs.photosComplete.splice(i, 1);
+            updateRoomStatus(roomId);
+            saveState();
+            renderRoomDetail(roomId);
+        }
+
+        function updateRoomStatus(roomId) {
+            const room = ROOMS_DATA.find(r => r.id === roomId);
+            const rs = state.rooms[roomId];
+            const total = room.photos.length + 1;
+            const done = rs.photosComplete.length + (rs.scanComplete ? 1 : 0);
+            rs.status = done === 0 ? 'not-started' : done === total ? 'complete' : 'in-progress';
+        }
+
+        function openCamera() { showToast('Open Camera app, take photos, then tap Import'); }
+        function importPhotos() { showToast('Run "Import Room Photos" shortcut'); }
+        function openTrace() { 
+            const room = ROOMS_DATA.find(r => r.id === state.currentRoom);
+            navigator.clipboard.writeText(room.name);
+            showToast(`"${room.name}" copied. Open Morpholio Trace.`);
+        }
+        function verifyScan() {
+            state.rooms[state.currentRoom].scanComplete = !state.rooms[state.currentRoom].scanComplete;
+            updateRoomStatus(state.currentRoom);
+            saveState();
+            renderRoomDetail(state.currentRoom);
+            showToast(state.rooms[state.currentRoom].scanComplete ? 'Scan marked complete ✓' : 'Scan unmarked');
+        }
+        function markRoomComplete() {
+            const room = ROOMS_DATA.find(r => r.id === state.currentRoom);
+            const rs = state.rooms[state.currentRoom];
+            rs.photosComplete = room.photos.map((_, i) => i);
+            rs.scanComplete = true;
+            rs.status = 'complete';
+            saveState();
+            renderRoomDetail(state.currentRoom);
+            showToast(`${room.name} complete! 🎉`);
+        }
+
+        function handleAuth() { showToast('OneDrive auth requires setup - see ONEDRIVE_SETUP.md'); }
+        function runSync() { showToast('Sync requires OneDrive connection'); }
+        function exportData() {
+            const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `herndon-scanner-${new Date().toISOString().split('T')[0]}.json`; a.click();
+            showToast('Data exported');
+        }
+        function importData() {
+            const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+            input.onchange = e => {
+                const reader = new FileReader();
+                reader.onload = ev => { state = { ...state, ...JSON.parse(ev.target.result) }; saveState(); renderRoomsList(); showToast('Imported'); };
+                reader.readAsText(e.target.files[0]);
+            };
+            input.click();
+        }
+        function resetData() { if (confirm('Reset all progress?')) { localStorage.removeItem('herndon-scanner-state'); location.reload(); } }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            renderRoomsList();
+            document.querySelectorAll('.filter-pill').forEach(p => {
+                p.onclick = () => {
+                    document.querySelectorAll('.filter-pill').forEach(x => x.classList.remove('active'));
+                    p.classList.add('active');
+                    state.filter = p.dataset.filter;
+                    saveState();
+                    renderRoomsList();
+                };
+            });
+            document.querySelectorAll('.tab-item').forEach(t => { t.onclick = () => switchView(t.dataset.view); });
+            document.getElementById('navRight').onclick = () => switchView('viewSync');
+        });
+
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(e => console.log('SW failed:', e));
+    </script>
+</body>
+</html>
