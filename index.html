@@ -10,6 +10,7 @@
     <title>Herndon Room Scanner</title>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon-192.png">
+    <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
     
     <style>
         :root {
@@ -504,8 +505,140 @@
             showToast(`${room.name} complete! 🎉`);
         }
 
-        function handleAuth() { showToast('OneDrive auth requires setup - see ONEDRIVE_SETUP.md'); }
-        function runSync() { showToast('Sync requires OneDrive connection'); }
+        // OneDrive Configuration
+        const ONEDRIVE_CONFIG = {
+            clientId: '8408fd61-d1aa-4f7c-810c-50f818772133',
+            redirectUri: 'https://hebedb.github.io/herndon-scanner/index.html',
+            scopes: ['Files.Read', 'Files.ReadWrite', 'User.Read']
+        };
+        
+        let msalInstance = null;
+        let accessToken = null;
+        
+        async function initMsal() {
+            if (typeof msal === 'undefined') {
+                console.log('MSAL not loaded yet');
+                return false;
+            }
+            msalInstance = new msal.PublicClientApplication({
+                auth: {
+                    clientId: ONEDRIVE_CONFIG.clientId,
+                    redirectUri: ONEDRIVE_CONFIG.redirectUri,
+                    authority: 'https://login.microsoftonline.com/consumers'
+                },
+                cache: { cacheLocation: 'localStorage' }
+            });
+            
+            // Handle redirect response
+            try {
+                const response = await msalInstance.handleRedirectPromise();
+                if (response) {
+                    accessToken = response.accessToken;
+                    updateAuthUI(true, response.account.username);
+                    return true;
+                }
+            } catch (e) { console.error('Redirect error:', e); }
+            
+            // Check for existing session
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                try {
+                    const silentResult = await msalInstance.acquireTokenSilent({
+                        scopes: ONEDRIVE_CONFIG.scopes,
+                        account: accounts[0]
+                    });
+                    accessToken = silentResult.accessToken;
+                    updateAuthUI(true, accounts[0].username);
+                    return true;
+                } catch (e) { console.log('Silent token failed, need login'); }
+            }
+            updateAuthUI(false);
+            return false;
+        }
+        
+        function updateAuthUI(connected, username = '') {
+            const indicator = document.getElementById('authIndicator');
+            const text = document.getElementById('authText');
+            const btn = document.querySelector('.auth-btn');
+            if (connected) {
+                indicator.classList.remove('disconnected');
+                indicator.classList.add('connected');
+                text.textContent = `Connected: ${username}`;
+                btn.textContent = 'Disconnect';
+                btn.onclick = handleLogout;
+            } else {
+                indicator.classList.remove('connected');
+                indicator.classList.add('disconnected');
+                text.textContent = 'Not connected';
+                btn.textContent = 'Connect to OneDrive';
+                btn.onclick = handleAuth;
+            }
+        }
+        
+        async function handleAuth() {
+            if (!msalInstance) {
+                showToast('Loading authentication...');
+                await initMsal();
+                if (!msalInstance) {
+                    showToast('Auth library not loaded. Check internet.');
+                    return;
+                }
+            }
+            try {
+                await msalInstance.loginRedirect({ scopes: ONEDRIVE_CONFIG.scopes });
+            } catch (e) {
+                console.error('Login error:', e);
+                showToast('Login failed: ' + e.message);
+            }
+        }
+        
+        async function handleLogout() {
+            if (msalInstance) {
+                await msalInstance.logoutRedirect();
+            }
+            accessToken = null;
+            updateAuthUI(false);
+        }
+        
+        async function runSync() {
+            if (!accessToken) {
+                showToast('Connect to OneDrive first');
+                return;
+            }
+            const syncIcon = document.getElementById('syncIcon');
+            syncIcon.classList.add('syncing');
+            showToast('Syncing...');
+            
+            try {
+                // Check each room's folder
+                let syncResults = { found: 0, missing: 0 };
+                for (const room of ROOMS_DATA) {
+                    const folderPath = `/Herndon Projects/${room.folder}`;
+                    try {
+                        const response = await fetch(
+                            `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(folderPath)}:/children`,
+                            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+                        );
+                        if (response.ok) {
+                            const data = await response.json();
+                            const fileCount = data.value ? data.value.length : 0;
+                            console.log(`${room.name}: ${fileCount} files`);
+                            syncResults.found++;
+                        } else {
+                            syncResults.missing++;
+                        }
+                    } catch (e) { syncResults.missing++; }
+                }
+                state.lastSync = new Date().toISOString();
+                saveState();
+                document.getElementById('syncSubtitle').textContent = `Last sync: ${new Date().toLocaleString()}`;
+                showToast(`Sync complete! ${syncResults.found} folders found`);
+            } catch (e) {
+                console.error('Sync error:', e);
+                showToast('Sync failed: ' + e.message);
+            }
+            syncIcon.classList.remove('syncing');
+        }
         function exportData() {
             const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -528,9 +661,10 @@
             setTimeout(() => t.classList.remove('show'), 3000);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             loadState();
             renderRoomsList();
+            await initMsal();
             document.querySelectorAll('.filter-pill').forEach(p => {
                 p.onclick = () => {
                     document.querySelectorAll('.filter-pill').forEach(x => x.classList.remove('active'));
